@@ -47,3 +47,10 @@ for t in synonymmaps indexes aliases datasources skillsets indexers; do
     if [[ $code == 20* ]]; then echo "OK   $t/$n"; else echo "FAIL $t/$n ($code)"; cat /tmp/resp.json; fi
   done
 done
+
+
+---------------
+
+curl -s "$DST/indexes/docs-blob/docs/\$count?api-version=$API" -H "api-key: $DST_KEY"; echo
+curl -s "$DST/indexers/docs-blob-indexer/status?api-version=$API" -H "api-key: $DST_KEY" \
+  | jq '[.executionHistory[] | {status, processed: .itemsProcessed, start: .startTime}]'

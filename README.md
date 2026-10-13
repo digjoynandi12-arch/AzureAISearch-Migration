@@ -54,3 +54,14 @@ done
 curl -s "$DST/indexes/docs-blob/docs/\$count?api-version=$API" -H "api-key: $DST_KEY"; echo
 curl -s "$DST/indexers/docs-blob-indexer/status?api-version=$API" -H "api-key: $DST_KEY" \
   | jq '[.executionHistory[] | {status, processed: .itemsProcessed, start: .startTime}]'
+
+-----------------
+
+# Dump all documents from the source
+curl -s -X POST "$SRC/indexes/hotels-push/docs/search?api-version=$API" \
+  -H "api-key: $SRC_KEY" -H 'Content-Type: application/json' -d '{"search":"*","top":1000}' \
+  | jq '{value: [.value[] | del(."@search.score") | . + {"@search.action":"upload"}]}' > hotels-backup.json
+
+# Upload them to the destination
+curl -s -X POST "$DST/indexes/hotels-push/docs/index?api-version=$API" \
+  -H "api-key: $DST_KEY" -H 'Content-Type: application/json' -d @hotels-backup.json | jq -c '[.value[].status]'

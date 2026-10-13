@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # export-definitions.sh — run from the backup folder
-set -euo pipefail
+# Reports each failure and carries on, instead of stopping silently
+set -uo pipefail
 
 # Use exported variables if present, otherwise load the saved file
 if [ -z "${SRC:-}" ] && [ -f ~/search-test.env ]; then source ~/search-test.env; fi
@@ -9,10 +10,14 @@ SRC_KEY=${SRC_KEY:-$(az search admin-key show -g "$SRC_RG" --service-name "$SRC_
 
 for t in synonymmaps indexes aliases datasources skillsets indexers; do
   mkdir -p "$t"
-  names=$(curl -sf "$SRC/$t?api-version=$API&\$select=name" -H "api-key: $SRC_KEY" | jq -r '.value[].name' || true)
-  for n in $names; do
-    curl -sf "$SRC/$t/$n?api-version=$API" -H "api-key: $SRC_KEY" \
-      | jq 'del(."@odata.context", ."@odata.etag")' > "$t/$n.json"
-    echo "exported $t/$n"
+  code=$(curl -s -o /tmp/list.json -w '%{http_code}' "$SRC/$t?api-version=$API&\$select=name" -H "api-key: $SRC_KEY")
+  if [[ $code != 200 ]]; then echo "SKIP $t (HTTP $code)"; continue; fi
+  for n in $(jq -r '.value[].name' /tmp/list.json); do
+    code=$(curl -s -o /tmp/obj.json -w '%{http_code}' "$SRC/$t/$n?api-version=$API" -H "api-key: $SRC_KEY")
+    if [[ $code == 200 ]]; then
+      jq 'del(."@odata.context", ."@odata.etag")' /tmp/obj.json > "$t/$n.json" && echo "exported $t/$n"
+    else
+      echo "FAIL $t/$n (HTTP $code)"; cat /tmp/obj.json; echo
+    fi
   done
 done

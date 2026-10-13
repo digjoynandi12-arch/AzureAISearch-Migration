@@ -21,3 +21,29 @@ for t in synonymmaps indexes aliases datasources skillsets indexers; do
     fi
   done
 done
+
+
+-------------------
+
+#!/usr/bin/env bash
+# import-definitions.sh — run from the backup folder
+set -euo pipefail
+
+# Use exported variables if present, otherwise load the saved file
+if [ -z "${DST:-}" ] && [ -f ~/search-test.env ]; then source ~/search-test.env; fi
+: "${DST:?DST is not set - run: set -a; source ~/search-test.env; set +a}"
+DST_KEY=${DST_KEY:-$(az search admin-key show -g "$DST_RG" --service-name "$DST_SVC" --query primaryKey -o tsv)}
+
+for t in synonymmaps indexes aliases datasources skillsets indexers; do
+  [ -d "$t" ] || continue
+  for f in "$t"/*.json; do
+    [ -e "$f" ] || continue
+    n=$(basename "$f" .json)
+    body=$(cat "$f")
+    [ "$t" = indexers ] && body=$(echo "$body" | jq '.disabled = true')
+    code=$(curl -s -o /tmp/resp.json -w '%{http_code}' -X PUT \
+      "$DST/$t/$n?api-version=$API" \
+      -H "api-key: $DST_KEY" -H 'Content-Type: application/json' -d "$body")
+    if [[ $code == 20* ]]; then echo "OK   $t/$n"; else echo "FAIL $t/$n ($code)"; cat /tmp/resp.json; fi
+  done
+done
